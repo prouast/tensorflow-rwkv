@@ -212,109 +212,58 @@ class WKVOp : public OpKernel {
     const Tensor& w = context->input(2); // (C,)
     const Tensor& u = context->input(3); // (C,)
 
-    // We didn't check the batch dimension during "SetShapeFn"
-    OP_REQUIRES(context, k.shape() == input_b_t.shape(),
-                errors::InvalidArgument("Input shapes have to be the same"));
+    OP_REQUIRES(context, k.shape() == v.shape(),
+                errors::InvalidArgument("Input shapes of k and v have to be the same"));
+    OP_REQUIRES(context, w.shape() == u.shape(),
+                errors::InvalidArgument("Input shapes of w and u have to be the same"));
 
-    const int32 N = GetTensorDim(input_a_t, data_format_, 'N');
-    const int32 H = GetTensorDim(input_a_t, data_format_, 'H');
-    const int32 W = GetTensorDim(input_a_t, data_format_, 'W');
+    // Allocate memory for the output
+    Tensor* wkv;
+    OP_REQUIRES_OK(context, context->allocate_output(0, k.shape, &wkv));
 
-    // output channels are d**2 where, d = 2r + 1
-    const int32 r = max_displacement / stride_2;
-    const int32 d = 2 * r + 1;
-    const int32 border = max_displacement + (kernel_size - 1) / 2;
-
-    const int32 Cout = d * d;
-    const int32 Hout =
-        static_cast<int>(ceil(static_cast<float>(((H + 2 * pad) - border * 2)) /
-                              static_cast<float>(stride_1)));
-    const int32 Wout =
-        static_cast<int>(ceil(static_cast<float>(((W + 2 * pad) - border * 2)) /
-                              static_cast<float>(stride_1)));
-
-    OP_REQUIRES(context, Hout >= 1,
-                errors::InvalidArgument(
-                    "Neighborhood and kernel don't fit in input height."));
-    OP_REQUIRES(context, Wout >= 1,
-                errors::InvalidArgument(
-                    "Neighborhood and kernel don't fit in input width."));
-
-    Tensor* output_t;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(0, TensorShape({N, Cout, Hout, Wout}),
-                                          &output_t));
-
-    functor::CorrelationCostFunctor<Device, T> correlationCostFunc;
-    Status s = correlationCostFunc(context, input_a_t, input_b_t, output_t,
-                                   /* params */
-                                   kernel_size, max_displacement, stride_1,
-                                   stride_2, pad, data_format_);
+    functor::WKVFunctor<Device, T> wkvFunc;
+    Status s = wkvFunc(context, k, v, w, u, wkv);
 
     OP_REQUIRES_OK(context, s);
   }
-
- private:
-  int kernel_size;
-  int max_displacement;
-  int stride_1;
-  int stride_2;
-  int pad;
-  TensorFormat data_format_;
 };
 
 template <typename Device, typename T>
 class WKVGradOp : public OpKernel {
  public:
-  explicit WKVGradOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("kernel_size", &kernel_size));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("max_displacement", &max_displacement));
-    OP_REQUIRES_OK(context, context->GetAttr("stride_1", &stride_1));
-    OP_REQUIRES_OK(context, context->GetAttr("stride_2", &stride_2));
-    OP_REQUIRES_OK(context, context->GetAttr("pad", &pad));
-    string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
-    OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES(context, kernel_size % 2 != 0,
-                errors::InvalidArgument("kernel_size must be odd"));
-  }
-
+  explicit WKVGradOp(OpKernelConstruction* context) : OpKernel(context) { }
   void Compute(OpKernelContext* context) override {
-    const Tensor& input_a_t = context->input(0);
-    const Tensor& input_b_t = context->input(1);
-    const Tensor& topdiff_t = context->input(2);
+    const Tensor& k = context->input(0); // (B, N, C)
+    const Tensor& v = context->input(1); // (B, N, C)
+    const Tensor& w = context->input(2); // (C,)
+    const Tensor& u = context->input(3); // (C,)
+    const Tensor& gwkv = context->input(4); // (B, N, C)
 
-    OP_REQUIRES(context, input_a_t.shape() == input_b_t.shape(),
-                errors::InvalidArgument("Input shapes have to be the same"));
+    const TensorShape &k_shape = k.shape();
+    const TensorShape &v_shape = v.shape();
+    const TensorShape &w_shape = w.shape();
+    const TensorShape &u_shape = w.shape();
+    const TensorShape &gwkv_shape = gwkv.shape();
+    OP_REQUIRES(context, k_shape == v_shape == gwkv_shape,
+                errors::InvalidArgument("Input shapes of k, v, and gwkv have to be the same"));
+    OP_REQUIRES(context, w_shape == u_shape,
+                errors::InvalidArgument("Input shapes of w and u have to be the same"));
 
-    // Allocate the memory for the bottom diffs
-    Tensor* output_a_gradient_t;
-    OP_REQUIRES_OK(context, context->allocate_output(0, input_a_t.shape(),
-                                                     &output_a_gradient_t));
-    Tensor* output_b_gradient_t;
-    OP_REQUIRES_OK(context, context->allocate_output(1, input_b_t.shape(),
-                                                     &output_b_gradient_t));
+    // Allocate memory for the outputs
+    Tensor* gk;
+    OP_REQUIRES_OK(context, context->allocate_output(0, k_shape, &gk));
+    Tensor* gv;
+    OP_REQUIRES_OK(context, context->allocate_output(1, v_shape, &gv));
+    Tensor* gw;
+    OP_REQUIRES_OK(context, context->allocate_output(2, TensorShape({k_shape.dim_size(0), w_shape.dim_size(0)}), &gw));
+    Tensor* gu;
+    OP_REQUIRES_OK(context, context->allocate_output(3, TensorShape({k_shape.dim_size(0), u_shape.dim_size(0)}), &gu));
 
-    functor::CorrelationCostGradFunctor<Device, T> correlationCostGrad;
-    Status s = correlationCostGrad(context, input_a_t, input_b_t, topdiff_t,
-                                   output_a_gradient_t, output_b_gradient_t,
-                                   /* params */
-                                   kernel_size, max_displacement, stride_1,
-                                   stride_2, pad, data_format_);
+    functor::WKVGradFunctor<Device, T> wkvGrad;
+    Status s = wkvGrad(context, k, v, w, u, gwkv, gk, gv, gw, gu);
 
     OP_REQUIRES_OK(context, s);
   }
-
- private:
-  int kernel_size;
-  int max_displacement;
-  int stride_1;
-  int stride_2;
-  int pad;
-  TensorFormat data_format_;
 };
 
 // Register the CPU kernels.
