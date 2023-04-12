@@ -8,6 +8,7 @@ py_library(
     srcs = glob(["*.py"]),
     data = [
         "//tensorflow_rwkv/custom_ops/layers:_correlation_cost_ops.so",
+        "//tensorflow_rwkv/custom_ops/layers:_wkv_ops.so",
     ],
     deps = [
         "//tensorflow_rwkv/testing",

@@ -58,7 +58,6 @@ function main() {
 
   cp ${PIP_FILE_PREFIX}setup.py "${TMPDIR}"
   cp ${PIP_FILE_PREFIX}MANIFEST.in "${TMPDIR}"
-  cp ${PIP_FILE_PREFIX}LICENSE "${TMPDIR}"
   cp ${PIP_FILE_PREFIX}requirements.txt "${TMPDIR}"
   touch ${TMPDIR}/stub.cc
 

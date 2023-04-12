@@ -45,7 +45,7 @@ struct WKVFunctor<CPUDevice, Dtype> {
     const auto _v = v.tensor<Dtype, 3>();
     const auto _w = w.tensor<Dtype, 1>();
     const auto _u = u.tensor<Dtype, 1>();
-    auto _wkv = output_t->tensor<Dtype, 3>();
+    auto _wkv = wkv->tensor<Dtype, 3>();
     _wkv.setZero();
 
     // Estimate cost per channel
@@ -60,17 +60,17 @@ struct WKVFunctor<CPUDevice, Dtype> {
     // https://github.com/tensorflow/tensorflow/blob/cb619a5b7dae6deb268366e154dd6876ea1801c8/tensorflow/tsl/platform/threadpool.h
     // https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4/cuda/wkv_cuda.cu
     const auto work = [&](Eigen::Index start, Eigen::Index end) -> void {
-      for (Eigen::Index idx = start; idx < end: ++idx) {
+      for (Eigen::Index idx = start; idx < end; ++idx) {
         const int _b = idx / C;
         const int _c = idx % C;
         Dtype p = 0, q = 0, o = MIN_VALUE;
         // p and q are running sums divided by exp(o) (to avoid overflows)
         for (int t = 0; t < T; t++) {
-          Dtype no = max(o, _u(_c) + _k(_b, t, _c));
+          Dtype no = std::max(o, _u(_c) + _k(_b, t, _c));
           Dtype A = exp(o - no);
           Dtype B = exp(_u(_c) + _k(_b, t, _c) - no);
           _wkv(_b, t, _c) = (A * p + B * _v(_b, t, _c)) / (A * q + B);
-          no = max(_w(_c) + o, _k(_b, t, _c));
+          no = std::max(_w(_c) + o, _k(_b, t, _c));
           A = exp(_w(_c) + o - no);
           B = exp(_k(_b, t, _c) - no);
           p = A * p + B * _v(_b, t, _c);
@@ -124,7 +124,7 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
     // https://github.com/tensorflow/tensorflow/blob/cb619a5b7dae6deb268366e154dd6876ea1801c8/tensorflow/tsl/platform/threadpool.h
     // https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4/cuda/wkv_cuda.cu
     const auto work = [&](Eigen::Index start, Eigen::Index end) -> void {
-      for (Eigen::Index idx = start; idx < end: ++idx) {
+      for (Eigen::Index idx = start; idx < end; ++idx) {
         const int _b = idx / C;
         const int _c = idx % C;
 
@@ -134,7 +134,7 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
         Dtype dpdw = 0, dqdw = 0;
         Dtype o = MIN_VALUE;
         for (int t = 0; t < T; t++) {
-          Dtype no = max(o, _k(_b, t, _c) + _u(_c));
+          Dtype no = std::max(o, _k(_b, t, _c) + _u(_c));
           Dtype A = exp(o - no);
           Dtype B = exp(_k(_b, t, _c) + _u(_c) - no);
 
@@ -143,12 +143,12 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
 
           y[t] = num * iden;
           z[t] = iden;
-          zexp[i] = _k(_b, t, _c) + _u(_c) - no;
+          zexp[t] = _k(_b, t, _c) + _u(_c) - no;
 
           gw += _gwkv(_b, t, _c) * (dpdw - dqdw * y[t]) * iden * A;
           gu += _gwkv(_b, t, _c) * (_v(_b, t, _c) - y[t]) * B * iden;
 
-          no = max(_w(_c) + o, _k(_b, t, _c));
+          no = std::max(_w(_c) + o, _k(_b, t, _c));
           A = exp(_w(_c) + o - no);
           B = exp(_k(_b, t, _c) - no);
           dpdw = A * (p + dpdw);
@@ -163,10 +163,10 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
         for (int t = T - 1; t >= 0; t--) {
           Dtype A = _gwkv(_b, t, _c) * z[t] * exp(zexp[t]);
           Dtype B = exp(_k(_b, t, _c) + o);
-          gk[t] = A * (v[t] - y[t]) + B * (gp * v[t] + gq);
-          gv[t] = A + B * gp;
+          _gk(_b, t, _c) = A * (_v(t) - y[t]) + B * (gp * _v(t) + gq);
+          _gv(_b, t, _c) = A + B * gp;
 
-          Dtype no = max(w + o, zexp[t] - _k(_b, t, _c) - _u(_c));
+          Dtype no = std::max(_w(_c) + o, zexp[t] - _k(_b, t, _c) - _u(_c));
           A = exp(_w(_c) + o - no);
           B = _gwkv(_b, t, _c) * z[t] * exp(zexp[t] - _k(_b, t, _c) - _u(_c) - no);
           gp = A * gp + B;
@@ -205,7 +205,7 @@ class WKVOp : public OpKernel {
 
     // Allocate memory for the output
     Tensor* wkv;
-    OP_REQUIRES_OK(context, context->allocate_output(0, k.shape, &wkv));
+    OP_REQUIRES_OK(context, context->allocate_output(0, k.shape(), &wkv));
 
     functor::WKVFunctor<Device, Dtype> wkvFunc;
     Status s = wkvFunc(context, k, v, w, u, wkv);
@@ -230,7 +230,9 @@ class WKVGradOp : public OpKernel {
     const TensorShape &w_shape = w.shape();
     const TensorShape &u_shape = w.shape();
     const TensorShape &gwkv_shape = gwkv.shape();
-    OP_REQUIRES(context, k_shape == v_shape == gwkv_shape,
+    OP_REQUIRES(context, k_shape == v_shape,
+                errors::InvalidArgument("Input shapes of k, v, and gwkv have to be the same"));
+    OP_REQUIRES(context, v_shape == gwkv_shape,
                 errors::InvalidArgument("Input shapes of k, v, and gwkv have to be the same"));
     OP_REQUIRES(context, w_shape == u_shape,
                 errors::InvalidArgument("Input shapes of w and u have to be the same"));

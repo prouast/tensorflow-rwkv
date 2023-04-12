@@ -14,9 +14,7 @@
 # ==============================================================================
 """Useful extra functionality for TensorFlow maintained by SIG-addons."""
 from tensorflow_rwkv.utils.ensure_tf_install import _check_tf_version
-from tensorflow_rwkv.utils.tfa_eol_msg import _print_eol_warning
 
-_print_eol_warning()
 _check_tf_version()
 
 # Local project imports

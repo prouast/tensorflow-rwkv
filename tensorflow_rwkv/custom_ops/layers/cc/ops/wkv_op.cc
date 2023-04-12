@@ -3,7 +3,9 @@
 
 namespace tensorflow {
 namespace rwkv {
-namespace functor {
+
+using ::tensorflow::shape_inference::InferenceContext;
+using ::tensorflow::shape_inference::ShapeHandle;
 
 REGISTER_OP("WKV")
     .Input("k: T") // (B, T, C)
@@ -66,6 +68,5 @@ REGISTER_OP("WKVGrad")
     })
     .Doc(R"Doc(WKVGrad op.)Doc");
 
-}  // namespace functor
 }  // namespace rwkv
 }  // namespace tensorflow

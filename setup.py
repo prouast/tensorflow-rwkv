@@ -1,28 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""TensorFlow Addons.
-
-TensorFlow Addons is a repository of contributions that conform to well-
-established API patterns, but implement new functionality not available
-in core TensorFlow. TensorFlow natively supports a large number of
-operators, layers, metrics, losses, and optimizers. However, in a fast
-moving field like ML, there are many interesting new developments that
-cannot be integrated into core TensorFlow (because their broad
-applicability is not yet clear, or it is mostly used by a smaller subset
-of the community).
-"""
+"""TensorFlow RWKV."""
 
 import os
 from pathlib import Path
@@ -48,13 +24,7 @@ def get_project_name_version():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(base_dir, "tensorflow_rwkv", "version.py")) as fp:
         exec(fp.read(), version)
-
-    project_name = "tensorflow-addons"
-    if "--nightly" in sys.argv:
-        project_name = "tfa-nightly"
-        version["__version__"] += get_last_commit_time()
-        sys.argv.remove("--nightly")
-
+    project_name = "tensorflow-rwkv"
     return project_name, version
 
 
@@ -70,7 +40,6 @@ def get_ext_modules():
 
 class BinaryDistribution(Distribution):
     """This class is needed in order to create OS specific wheels."""
-
     def has_ext_modules(self):
         return True
 
@@ -83,8 +52,8 @@ setup(
     version=version["__version__"],
     description=DOCLINES[0],
     long_description="\n".join(DOCLINES[2:]),
-    author="Google Inc.",
-    author_email="opensource@google.com",
+    author="Philipp Rouast",
+    author_email="philipp@rouast.com",
     packages=find_packages(),
     ext_modules=get_ext_modules(),
     install_requires=Path("requirements.txt").read_text().splitlines(),
