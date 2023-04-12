@@ -8,7 +8,7 @@ namespace tensorflow {
 namespace rwkv {
 namespace functor {
 
-template <typename Device, typename T>
+template <typename Device, typename Dtype>
 struct WKVFunctor {
   Status operator()(OpKernelContext* context,
                     // Inputs
@@ -17,7 +17,7 @@ struct WKVFunctor {
                     Tensor* wkv);
 };
 
-template <typename Device, typename T>
+template <typename Device, typename Dtype>
 struct WKVGradFunctor {
   Status operator()(OpKernelContext* context,
                     // Inputs

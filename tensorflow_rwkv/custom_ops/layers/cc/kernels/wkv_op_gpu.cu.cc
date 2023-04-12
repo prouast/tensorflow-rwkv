@@ -1,6 +1,5 @@
 
-// TODO
-//#if GOOGLE_CUDA
+#if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
 
@@ -16,6 +15,8 @@
 
 #define MIN_VALUE (-1e38)
 
+// https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4/cuda/wkv_cuda.cu
+
 namespace tensorflow {
 namespace rwkv {
 
@@ -25,110 +26,109 @@ namespace functor {
 
 namespace {
 
-template <typename T>
-__global__ void wkv_forward(const int B, const int N, const int C,
-                            const T *__restrict__ const _k, const T *__restrict__ const _v, const T *__restrict__ const _w, const T *__restrict__ const _u,
-                            T *__restrict__ const _wkv) {
+template <typename Dtype>
+__global__ void wkv_forward(const int B, const int T, const int C,
+                            const Dtype *__restrict__ const _k, const Dtype *__restrict__ const _v, const Dtype *__restrict__ const _w, const Dtype *__restrict__ const _u,
+                            Dtype *__restrict__ const _wkv) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int _b = idx / C;
     const int _c = idx % C;
-    const int _offset = _b * N * C + _c;
+    const int _offset = _b * T * C + _c;
 
-    T u = _u[_c];
-    T w = _w[_c];
-    const T *__restrict__ const k = _k + _offset;
-    const T *__restrict__ const v = _v + _offset;
-    T *__restrict__ const wkv = _wkv + _offset;
+    Dtype u = _u[_c];
+    Dtype w = _w[_c];
+    const Dtype *__restrict__ const k = _k + _offset;
+    const Dtype *__restrict__ const v = _v + _offset;
+    Dtype *__restrict__ const wkv = _wkv + _offset;
 
-    T p = 0, q = 0, o = MIN_VALUE;
+    Dtype p = 0, q = 0, o = MIN_VALUE;
     // p and q are running sums divided by exp(o) (to avoid overflows)
-    for (int i = 0; i < N; i++) {
-        const int ii = i * C;
+    for (int t = 0; t < T; t++) {
+        const int i = t * C;
 
-        T no = max(o, u + k[ii]);
-        T A = exp(o - no);
-        T B = exp(u + k[ii] - no);
-        wkv[ii] = (A * p + B * v[ii]) / (A * q + B);
+        Dtype no = max(o, u + k[i]);
+        Dtype A = exp(o - no);
+        Dtype B = exp(u + k[i] - no);
+        wkv[ii] = (A * p + B * v[i]) / (A * q + B);
 
-        no = max(w + o, k[ii]);
+        no = max(w + o, k[i]);
         A = exp(w + o - no);
-        B = exp(k[ii] - no);
-        p = A * p + B * v[ii];
+        B = exp(k[i] - no);
+        p = A * p + B * v[i];
         q = A * q + B;
         o = no;
     }
 }
 
-template <typename T>
-__global__ void wkv_backward(const int B, const int N, const int C,
-                             const T *__restrict__ const _k, const T *__restrict__ const _v, const T *__restrict__ const _w, const T *__restrict__ const _u, const T *__restrict__ const _gwkv,
-                             T *__restrict__ const _gk, T *__restrict__ const _gv, T *__restrict__ const _gw, T *__restrict__ const _gu) {
+template <typename Dtype>
+__global__ void wkv_backward(const int B, const int T, const int C,
+                             const Dtype *__restrict__ const _k, const Dtype *__restrict__ const _v, const Dtype *__restrict__ const _w, const Dtype *__restrict__ const _u, const Dtype *__restrict__ const _gwkv,
+                             Dtype *__restrict__ const _gk, Dtype *__restrict__ const _gv, Dtype *__restrict__ const _gw, Dtype *__restrict__ const _gu) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     const int _b = idx / C;
     const int _c = idx % C;
-    const int _offset = _b * N * C + _c;
-    const int Nmax = N
+    const int _offset = _b * T * C + _c;
 
-    T u = _u[_c];
-    T w = _w[_c];
-    const T *__restrict__ const k = _k + _offset;
-    const T *__restrict__ const v = _v + _offset;
-    const T *__restrict__ const gwkv = _gwkv + _offset;
+    Dtype u = _u[_c];
+    Dtype w = _w[_c];
+    const Dtype *__restrict__ const k = _k + _offset;
+    const Dtype *__restrict__ const v = _v + _offset;
+    const Dtype *__restrict__ const gwkv = _gwkv + _offset;
 
-    T *__restrict__ const gk = _gk + _offset;
-    T *__restrict__ const gv = _gv + _offset;
+    Dtype *__restrict__ const gk = _gk + _offset;
+    Dtype *__restrict__ const gv = _gv + _offset;
 
-    T y[Nmax], z[Nmax], zexp[Nmax];
+    Dtype y[T], z[T], zexp[T];
 
-    T gw = 0, gu = 0;
-    T p = 0, q = 0;
-    T dpdw = 0, dqdw = 0;
-    T o = MIN_VALUE;
-    for (int i = 0; i < N; i++) {
-        const int ii = i * C;
-        T no = max(o, k[ii] + u);
-        T A = exp(o - no);
-        T B = exp(k[ii] + u - no);
+    Dtype gw = 0, gu = 0;
+    Dtype p = 0, q = 0;
+    Dtype dpdw = 0, dqdw = 0;
+    Dtype o = MIN_VALUE;
+    for (int t = 0; t < T; t++) {
+        const int i = t * C;
+        Dtype no = max(o, k[i] + u);
+        Dtype A = exp(o - no);
+        Dtype B = exp(k[i] + u - no);
 
-        T num = A * p + B * v[ii];
-        T iden = 1 / (A * q + B);
+        Dtype num = A * p + B * v[i];
+        Dtype iden = 1 / (A * q + B);
 
-        y[i] = num * iden;
-        z[i] = iden;
-        zexp[i] = k[ii] + u - no;
+        y[t] = num * iden;
+        z[t] = iden;
+        zexp[t] = k[i] + u - no;
 
-        gw += gwkv[ii] * (dpdw - dqdw * y[i]) * iden * A;
-        gu += gwkv[ii] * (v[ii] - y[i]) * B * iden;
+        gw += gwkv[i] * (dpdw - dqdw * y[t]) * iden * A;
+        gu += gwkv[i] * (v[i] - y[t]) * B * iden;
 
-        no = max(w + o, k[ii]);
+        no = max(w + o, k[i]);
         A = exp(w + o - no);
-        B = exp(k[ii] - no);
+        B = exp(k[i] - no);
         dpdw = A * (p + dpdw);
         dqdw = A * (q + dqdw);
-        p = A * p + B * v[ii];
+        p = A * p + B * v[i];
         q = A * q + B;
         o = no;
     }
 
-    T gp = 0, gq = 0;
+    Dtype gp = 0, gq = 0;
     o = MIN_VALUE;
-    for (int i = N - 1; i >= 0; i--) {
-        const int ii = i * C;
-        T A = gwkv[ii] * z[i] * exp(zexp[i]);
-        T B = exp(k[ii] + o);
-        gk[ii] = A * (v[ii] - y[i]) + B * (gp * v[ii] + gq);
-        gv[ii] = A + B * gp;
+    for (int t = T - 1; t >= 0; t--) {
+        const int i = t * C;
+        Dtype A = gwkv[i] * z[t] * exp(zexp[t]);
+        Dtype B = exp(k[i] + o);
+        gk[i] = A * (v[i] - y[t]) + B * (gp * v[i] + gq);
+        gv[i] = A + B * gp;
 
-        T no = max(w + o, zexp[i] - k[ii] - u);
+        Dtype no = max(w + o, zexp[t] - k[i] - u);
         A = exp(w + o - no);
-        B = gwkv[ii] * z[i] * exp(zexp[i] - k[ii] - u - no);
+        B = gwkv[i] * z[t] * exp(zexp[t] - k[i] - u - no);
         gp = A * gp + B;
-        gq = A * gq - B * y[i];
+        gq = A * gq - B * y[t];
         o = no;
     }
 
     // Multiply by w because the w -> -exp(w) preprocessing is halfway in the backwards pass, even though it's not in the forward pass
-    // TODO
+    // TODO(prouast): Verify that this is correct
     const int _offsetBC = _b * C + _c;
     _gw[_offsetBC] += gw * _w[_c];
     _gu[_offsetBC] += gu;
@@ -145,7 +145,7 @@ struct WKVFunctor<GPUDevice, Dtype> {
     const int THREADS_PER_BLOCK = 32;
 
     const int32 B = k.dimension(0);
-    const int32 N = k.dimension(1);
+    const int32 T = k.dimension(1);
     const int32 C = k.dimension(2);
 
     dim3 threadsPerBlock( min(C, THREADS_PER_BLOCK) );
@@ -154,10 +154,8 @@ struct WKVFunctor<GPUDevice, Dtype> {
 
     const GPUDevice &d = context->eigen_gpu_device();
 
-    // TODO apply -exp(decay) here?
-
     wkv_forward<<<numBlocks, threadsPerBlock, 0, d.stream()>>>(
-        B, N, C,
+        B, T, C,
         k.flat<Dtype>.data(), v.flat<Dtype>.data(), w.flat<Dtype>.data(), u.flat<Dtype>.data(), 
         wkv->flat<Dtype>.data());
 
@@ -174,7 +172,7 @@ struct WKVGradFunctor<GPUDevice, Dtype> {
     const int THREADS_PER_BLOCK = 32;
 
     const int32 B = k.dimension(0);
-    const int32 N = k.dimension(1);
+    const int32 T = k.dimension(1);
     const int32 C = k.dimension(2);
 
     dim3 threadsPerBlock( min(C, THREADS_PER_BLOCK) );
@@ -182,7 +180,7 @@ struct WKVGradFunctor<GPUDevice, Dtype> {
     dim3 numBlocks(B * C / threadsPerBlock.x);
 
     wkv_backward<<<numBlocks, threadsPerBlock>>>(
-        B, N, C,
+        B, T, C,
         k.flat<Dtype>.data(), v.flat<Dtype>.data(), w.flat<Dtype>.data(), u.flat<Dtype>.data(), gwkv.flat<Dtype>.data(),
         gk->flat<Dtype>.data(), gv->flat<Dtype>.data(), gw->flat<Dtype>.data(), gu->flat<Dtype>.data());
 

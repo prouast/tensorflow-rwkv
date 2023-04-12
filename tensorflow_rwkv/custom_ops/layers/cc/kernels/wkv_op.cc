@@ -13,6 +13,13 @@
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#define MIN_VALUE (-1e38)
+
+// https://github.com/tensorflow/addons/blob/master/tensorflow_addons/custom_ops/layers/cc/kernels/embedding_bag_ops.cc
+// https://discuss.tensorflow.org/t/custom-op-c-how-to-write-multithreaded-cpu-kernel/8858
+// https://eigen.tuxfamily.org/index.php?title=Main_Page
+// https://johanwind.github.io/2023/03/23/rwkv_details.html
+
 namespace tensorflow {
 namespace rwkv {
 
@@ -23,192 +30,171 @@ namespace functor {
 
 template <typename Dtype>
 struct WKVFunctor<CPUDevice, Dtype> {
-  Status operator()(OpKernelContext* context, const Tensor& input_a_t,
-                    const Tensor& input_b_t, Tensor* output_t,
-                    /* params */
-                    int kernel_size, int max_displacement, int stride_1,
-                    int stride_2, int pad, TensorFormat data_format) {
-    const int32 oN = GetTensorDim(*output_t, FORMAT_NCHW, 'N');
-    // const int32 oC = GetTensorDim(*output_t, FORMAT_NCHW, 'C');
-    const int32 oH = GetTensorDim(*output_t, FORMAT_NCHW, 'H');
-    const int32 oW = GetTensorDim(*output_t, FORMAT_NCHW, 'W');
-    const int32 iH = GetTensorDim(input_a_t, data_format, 'H');
-    const int32 iW = GetTensorDim(input_a_t, data_format, 'W');
-    const int32 iC = GetTensorDim(input_a_t, data_format, 'C');
+  Status operator()(OpKernelContext* context,
+                    const Tensor& k, const Tensor& v, const Tensor& w, const Tensor& u,
+                    Tensor* wkv) {
+    
+    // Get dims
+    const TensorShape &k_shape = k.shape();
+    const int32 B = k_shape.dim_size(0);
+    const int32 T = k_shape.dim_size(1);
+    const int32 C = k_shape.dim_size(2);
 
-    const int K = kernel_size * kernel_size * iC;
+    // Get tensors
+    const auto _k = k.tensor<Dtype, 3>();
+    const auto _v = v.tensor<Dtype, 3>();
+    const auto _w = w.tensor<Dtype, 1>();
+    const auto _u = u.tensor<Dtype, 1>();
+    auto _wkv = output_t->tensor<Dtype, 3>();
+    _wkv.setZero();
 
-    const auto input_a = input_a_t.tensor<Dtype, 4>();
-    const auto input_b = input_b_t.tensor<Dtype, 4>();
-    auto output = output_t->tensor<Dtype, 4>();
-    output.setZero();
+    // Estimate cost per channel
+    // T * (2*max + 4*exp + 10*add + 6*mul + 1*div)
+    const int64 cost_per_channel = T * 
+      (10 * Eigen::TensorOpCost::AddCost<Dtype>() +
+       6 * Eigen::TensorOpCost::MulCost<Dtype>() +
+       Eigen::TensorOpCost::DivCost<Dtype>() +
+       4 * 10 * (Eigen::TensorOpCost::MulCost<Dtype>() + Eigen::TensorOpCost::MulCost<Dtype>()));
 
-    const int kernel_rad = (kernel_size - 1) / 2;
-    const int displacement_rad = max_displacement / stride_2;
-    const int displacement_size = 2 * displacement_rad + 1;
-
-    const bool is_NCHW = (data_format == FORMAT_NCHW);
-    // estimate operations per pixel
-    const int64 cost_per_pixel =
-        iC * ((2 * displacement_rad + 1) * (2 * displacement_rad + 1)) *
-        ((2 * kernel_rad + 1) * (2 * kernel_rad + 1)) *
-        (Eigen::TensorOpCost::MulCost<Dtype>() +
-         Eigen::TensorOpCost::AddCost<Dtype>());
-
+    // Work can be done in parallel for B * C
+    // https://github.com/tensorflow/tensorflow/blob/cb619a5b7dae6deb268366e154dd6876ea1801c8/tensorflow/tsl/platform/threadpool.h
+    // https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4/cuda/wkv_cuda.cu
     const auto work = [&](Eigen::Index start, Eigen::Index end) -> void {
-      for (Eigen::Index id = start; id < end; ++id) {
-        const int n = id / (oH * oW);
-        const int h = (id / oW) % oH;
-        const int w = id % oW;
-        const int h1 = (h - pad) * stride_1 + max_displacement + kernel_rad;
-        const int w1 = (w - pad) * stride_1 + max_displacement + kernel_rad;
-        for (int tj = -displacement_rad; tj <= displacement_rad; ++tj) {
-          for (int ti = -displacement_rad; ti <= displacement_rad; ++ti) {
-            const int tc = (tj + displacement_rad) * displacement_size +
-                           (ti + displacement_rad);
-
-            const int w2 = w1 + ti * stride_2;
-            const int h2 = h1 + tj * stride_2;
-
-            for (int j = -kernel_rad; j <= kernel_rad; ++j) {
-              // out-of-bound test
-              if (!FastBoundsCheck(h1 + j, iH) || !FastBoundsCheck(h2 + j, iH))
-                continue;
-              for (int i = -kernel_rad; i <= kernel_rad; ++i) {
-                if (!FastBoundsCheck(w1 + i, iW) ||
-                    !FastBoundsCheck(w2 + i, iW))
-                  continue;
-                for (int c = 0; c < iC; ++c) {
-                  // eq. (1) in FlowNet: Learning Optical Flow with
-                  // Convolutional Networks
-                  if (is_NCHW) {
-                    output(n, tc, h, w) += input_a(n, c, h1 + j, w1 + i) *
-                                           input_b(n, c, h2 + j, w2 + i);
-                  } else {
-                    output(n, tc, h, w) += input_a(n, h1 + j, w1 + i, c) *
-                                           input_b(n, h2 + j, w2 + i, c);
-                  }
-                }
-              }
-            }
-            output(n, tc, h, w) /= K;
-          }
+      for (Eigen::Index idx = start; idx < end: ++idx) {
+        const int _b = idx / C;
+        const int _c = idx % C;
+        Dtype p = 0, q = 0, o = MIN_VALUE;
+        // p and q are running sums divided by exp(o) (to avoid overflows)
+        for (int t = 0; t < T; t++) {
+          Dtype no = max(o, _u(_c) + _k(_b, t, _c));
+          Dtype A = exp(o - no);
+          Dtype B = exp(_u(_c) + _k(_b, t, _c) - no);
+          _wkv(_b, t, _c) = (A * p + B * _v(_b, t, _c)) / (A * q + B);
+          no = max(_w(_c) + o, _k(_b, t, _c));
+          A = exp(_w(_c) + o - no);
+          B = exp(_k(_b, t, _c) - no);
+          p = A * p + B * _v(_b, t, _c);
+          q = A * q + B;
+          o = no;
         }
       }
     };
-    auto thread_pool =
-        context->device()->tensorflow_cpu_worker_threads()->workers;
-    thread_pool->ParallelFor(oN * oH * oW, cost_per_pixel, work);
+    auto thread_pool = context->device()->tensorflow_cpu_worker_threads()->workers;
+    thread_pool->ParallelFor(B*C, cost_per_channel, work);
     return Status();
   }
 };
 
 template <typename Dtype>
 struct WKVGradFunctor<CPUDevice, Dtype> {
-  Status operator()(OpKernelContext* context, const Tensor& input_a_t,
-                    const Tensor& input_b_t, const Tensor& topdiff_t,
-                    Tensor* output_a_gradient_t, Tensor* output_b_gradient_t,
-                    /* params */
-                    int kernel_size, int max_displacement, int stride_1,
-                    int stride_2, int pad, TensorFormat data_format) {
-    const int32 iN = GetTensorDim(input_a_t, data_format, 'N');
-    const int32 iC = GetTensorDim(input_a_t, data_format, 'C');
-    const int32 iH = GetTensorDim(input_a_t, data_format, 'H');
-    const int32 iW = GetTensorDim(input_a_t, data_format, 'W');
+  Status operator()(OpKernelContext* context,
+                    const Tensor& k, const Tensor& v, const Tensor& w, const Tensor& u, const Tensor& gwkv,
+                    Tensor* gk, Tensor* gv, Tensor* gw, Tensor* gu) {
+    
+    // Get dims
+    const TensorShape &k_shape = k.shape();
+    const int32 B = k_shape.dim_size(0);
+    const int32 T = k_shape.dim_size(1);
+    const int32 C = k_shape.dim_size(2);
 
-    // topdiff is NCHW
-    // const int32 oC = GetTensorDim(topdiff_t, FORMAT_NCHW, 'C');
-    const int32 oH = GetTensorDim(topdiff_t, FORMAT_NCHW, 'H');
-    const int32 oW = GetTensorDim(topdiff_t, FORMAT_NCHW, 'W');
+    // Get tensors
+    const auto _k = k.tensor<Dtype, 3>();
+    const auto _v = v.tensor<Dtype, 3>();
+    const auto _w = w.tensor<Dtype, 1>();
+    const auto _u = u.tensor<Dtype, 1>();
+    const auto _gwkv = gwkv.tensor<Dtype, 3>();
+    auto _gk = gk->tensor<Dtype, 3>();
+    _gk.setZero();
+    auto _gv = gv->tensor<Dtype, 3>();
+    _gv.setZero();
+    auto _gw = gw->tensor<Dtype, 2>();
+    _gw.setZero();
+    auto _gu = gu->tensor<Dtype, 2>();
+    _gu.setZero();
 
-    const auto topdiff = topdiff_t.tensor<Dtype, 4>();
-    const auto input_a = input_a_t.tensor<Dtype, 4>();
-    const auto input_b = input_b_t.tensor<Dtype, 4>();
-    auto output_a_gradient = output_a_gradient_t->tensor<Dtype, 4>();
-    auto output_b_gradient = output_b_gradient_t->tensor<Dtype, 4>();
-    output_a_gradient.setZero();
-    output_b_gradient.setZero();
+    // Estimate cost per channel
+    // T * (3*max + 7*exp + 35*add + 26*mul + 1*div)
+    const int64 cost_per_channel = T * 
+      (35 * Eigen::TensorOpCost::AddCost<Dtype>() +
+       26 * Eigen::TensorOpCost::MulCost<Dtype>() +
+       Eigen::TensorOpCost::DivCost<Dtype>() +
+       7 * 10 * (Eigen::TensorOpCost::MulCost<Dtype>() + Eigen::TensorOpCost::MulCost<Dtype>()));
 
-    const int kernel_rad = (kernel_size - 1) / 2;
-    const int displacement_rad = max_displacement / stride_2;
-    const int displacement_size = 2 * displacement_rad + 1;
-    const int K = kernel_size * kernel_size * iC;
-
-    const bool is_NCHW = (data_format == FORMAT_NCHW);
-    // estimate operations per pixel
-    const int64 cost_per_pixel =
-        2 * iC * ((2 * displacement_rad + 1) * (2 * displacement_rad + 1)) *
-        ((2 * kernel_rad + 1) * (2 * kernel_rad + 1)) *
-        (Eigen::TensorOpCost::MulCost<Dtype>() +
-         Eigen::TensorOpCost::AddCost<Dtype>());
-
+    // Work can be done in parallel for B * C
+    // https://github.com/tensorflow/tensorflow/blob/cb619a5b7dae6deb268366e154dd6876ea1801c8/tensorflow/tsl/platform/threadpool.h
+    // https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4/cuda/wkv_cuda.cu
     const auto work = [&](Eigen::Index start, Eigen::Index end) -> void {
-      for (Eigen::Index id = start; id < end; ++id) {
-        const int n = id / (oH * oW);
-        const int h = (id / oW) % oH;
-        const int w = id % oW;
-        const int h1 = (h - pad) * stride_1 + max_displacement + kernel_rad;
-        const int w1 = (w - pad) * stride_1 + max_displacement + kernel_rad;
+      for (Eigen::Index idx = start; idx < end: ++idx) {
+        const int _b = idx / C;
+        const int _c = idx % C;
 
-        for (int tj = -displacement_rad; tj <= displacement_rad; ++tj) {
-          for (int ti = -displacement_rad; ti <= displacement_rad; ++ti) {
-            const int tc = (tj + displacement_rad) * displacement_size +
-                           (ti + displacement_rad);
+        Dtype y[T], z[T], zexp[T];
+        Dtype gw = 0, gu = 0; 
+        Dtype p = 0, q = 0;
+        Dtype dpdw = 0, dqdw = 0;
+        Dtype o = MIN_VALUE;
+        for (int t = 0; t < T; t++) {
+          Dtype no = max(o, _k(_b, t, _c) + _u(_c));
+          Dtype A = exp(o - no);
+          Dtype B = exp(_k(_b, t, _c) + _u(_c) - no);
 
-            const int w2 = w1 + ti * stride_2;
-            const int h2 = h1 + tj * stride_2;
+          Dtype num = A * p + B * _v(_b, t, _c);
+          Dtype iden = 1 / (A * q + B);
 
-            for (int j = -kernel_rad; j <= kernel_rad; ++j) {
-              // out-of-bound test
-              if (!FastBoundsCheck(h1 + j, iH) || !FastBoundsCheck(h2 + j, iH))
-                continue;
-              for (int i = -kernel_rad; i <= kernel_rad; ++i) {
-                if (!FastBoundsCheck(w1 + i, iW) ||
-                    !FastBoundsCheck(w2 + i, iW))
-                  continue;
-                for (int c = 0; c < iC; ++c) {
-                  // eq. (1) in FlowNet: Learning Optical Flow with
-                  // Convolutional Networks
-                  if (is_NCHW) {
-                    output_a_gradient(n, c, h1 + j, w1 + i) +=
-                        topdiff(n, tc, h, w) * input_b(n, c, h2 + j, w2 + i) /
-                        K;
-                    output_b_gradient(n, c, h2 + j, w2 + i) +=
-                        topdiff(n, tc, h, w) * input_a(n, c, h1 + j, w1 + i) /
-                        K;
-                  } else {
-                    output_a_gradient(n, h1 + j, w1 + i, c) +=
-                        topdiff(n, tc, h, w) * input_b(n, h2 + j, w2 + i, c) /
-                        K;
-                    output_b_gradient(n, h2 + j, w2 + i, c) +=
-                        topdiff(n, tc, h, w) * input_a(n, h1 + j, w1 + i, c) /
-                        K;
-                  }
-                }
-              }
-            }
-          }
+          y[t] = num * iden;
+          z[t] = iden;
+          zexp[i] = _k(_b, t, _c) + _u(_c) - no;
+
+          gw += _gwkv(_b, t, _c) * (dpdw - dqdw * y[t]) * iden * A;
+          gu += _gwkv(_b, t, _c) * (_v(_b, t, _c) - y[t]) * B * iden;
+
+          no = max(_w(_c) + o, _k(_b, t, _c));
+          A = exp(_w(_c) + o - no);
+          B = exp(_k(_b, t, _c) - no);
+          dpdw = A * (p + dpdw);
+          dqdw = A * (q + dqdw);
+          p = A * p + B * _v(_c);
+          q = A * q + B;
+          o = no;
         }
+        
+        Dtype gp = 0, gq = 0;
+        o = MIN_VALUE;
+        for (int t = T - 1; t >= 0; t--) {
+          Dtype A = _gwkv(_b, t, _c) * z[t] * exp(zexp[t]);
+          Dtype B = exp(_k(_b, t, _c) + o);
+          gk[t] = A * (v[t] - y[t]) + B * (gp * v[t] + gq);
+          gv[t] = A + B * gp;
+
+          Dtype no = max(w + o, zexp[t] - _k(_b, t, _c) - _u(_c));
+          A = exp(_w(_c) + o - no);
+          B = _gwkv(_b, t, _c) * z[t] * exp(zexp[t] - _k(_b, t, _c) - _u(_c) - no);
+          gp = A * gp + B;
+          gq = A * gq - B * y[t];
+          o = no;
+        }
+
+        // Multiply by w because the w -> -exp(w) preprocessing is halfway in the backwards pass, even though it's not in the forward pass
+        // TODO(prouast): Verify that this is correct
+        _gw(_b, _c) += gw * _w(_c);
+        _gu(_b, _c) += gu;
       }
     };
-
-    auto thread_pool =
-        context->device()->tensorflow_cpu_worker_threads()->workers;
-    thread_pool->ParallelFor(iN * oH * oW, cost_per_pixel, work);
-
+    auto thread_pool = context->device()->tensorflow_cpu_worker_threads()->workers;
+    thread_pool->ParallelFor(B*C, cost_per_channel, work);
     return Status();
   }
 };
 
 }  // end namespace functor
 
-template <typename Device, typename T>
+template <typename Device, typename Dtype>
 class WKVOp : public OpKernel {
  public:
   explicit WKVOp(OpKernelConstruction* context) : OpKernel(context) { }
   void Compute(OpKernelContext* context) override {
-    const Tensor& k = context->input(0); // (B, N, C)
-    const Tensor& v = context->input(1); // (B, N, C)
+    const Tensor& k = context->input(0); // (B, T, C)
+    const Tensor& v = context->input(1); // (B, T, C)
     const Tensor& w = context->input(2); // (C,)
     const Tensor& u = context->input(3); // (C,)
 
@@ -221,23 +207,23 @@ class WKVOp : public OpKernel {
     Tensor* wkv;
     OP_REQUIRES_OK(context, context->allocate_output(0, k.shape, &wkv));
 
-    functor::WKVFunctor<Device, T> wkvFunc;
+    functor::WKVFunctor<Device, Dtype> wkvFunc;
     Status s = wkvFunc(context, k, v, w, u, wkv);
 
     OP_REQUIRES_OK(context, s);
   }
 };
 
-template <typename Device, typename T>
+template <typename Device, typename Dtype>
 class WKVGradOp : public OpKernel {
  public:
   explicit WKVGradOp(OpKernelConstruction* context) : OpKernel(context) { }
   void Compute(OpKernelContext* context) override {
-    const Tensor& k = context->input(0); // (B, N, C)
-    const Tensor& v = context->input(1); // (B, N, C)
+    const Tensor& k = context->input(0); // (B, T, C)
+    const Tensor& v = context->input(1); // (B, T, C)
     const Tensor& w = context->input(2); // (C,)
     const Tensor& u = context->input(3); // (C,)
-    const Tensor& gwkv = context->input(4); // (B, N, C)
+    const Tensor& gwkv = context->input(4); // (B, T, C)
 
     const TensorShape &k_shape = k.shape();
     const TensorShape &v_shape = v.shape();
@@ -259,7 +245,7 @@ class WKVGradOp : public OpKernel {
     Tensor* gu;
     OP_REQUIRES_OK(context, context->allocate_output(3, TensorShape({k_shape.dim_size(0), u_shape.dim_size(0)}), &gu));
 
-    functor::WKVGradFunctor<Device, T> wkvGrad;
+    functor::WKVGradFunctor<Device, Dtype> wkvGrad;
     Status s = wkvGrad(context, k, v, w, u, gwkv, gk, gv, gw, gu);
 
     OP_REQUIRES_OK(context, s);
