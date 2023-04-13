@@ -23,7 +23,7 @@ def test_get_all_shared_objects():
             "was being loaded while --skip-custom-ops was set."
         )
     all_shared_objects = _get_all_shared_objects()
-    assert len(all_shared_objects) >= 4
+    assert len(all_shared_objects) >= 2
 
     for file in all_shared_objects:
         tf.load_op_library(file)

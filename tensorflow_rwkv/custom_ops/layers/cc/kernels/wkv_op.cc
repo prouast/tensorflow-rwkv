@@ -153,7 +153,7 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
           B = exp(_k(_b, t, _c) - no);
           dpdw = A * (p + dpdw);
           dqdw = A * (q + dqdw);
-          p = A * p + B * _v(_c);
+          p = A * p + B * _v(_b, t, _c);
           q = A * q + B;
           o = no;
         }
@@ -163,7 +163,7 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
         for (int t = T - 1; t >= 0; t--) {
           Dtype A = _gwkv(_b, t, _c) * z[t] * exp(zexp[t]);
           Dtype B = exp(_k(_b, t, _c) + o);
-          _gk(_b, t, _c) = A * (_v(t) - y[t]) + B * (gp * _v(t) + gq);
+          _gk(_b, t, _c) = A * (_v(_b, t, _c) - y[t]) + B * (gp * _v(_b, t, _c) + gq);
           _gv(_b, t, _c) = A + B * gp;
 
           Dtype no = std::max(_w(_c) + o, zexp[t] - _k(_b, t, _c) - _u(_c));
@@ -173,10 +173,8 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
           gq = A * gq - B * y[t];
           o = no;
         }
-
-        // Multiply by w because the w -> -exp(w) preprocessing is halfway in the backwards pass, even though it's not in the forward pass
-        // TODO(prouast): Verify that this is correct
-        _gw(_b, _c) += gw * _w(_c);
+        
+        _gw(_b, _c) += gw;
         _gu(_b, _c) += gu;
       }
     };

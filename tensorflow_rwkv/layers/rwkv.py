@@ -7,12 +7,12 @@ _wkv_so = LazySO("custom_ops/layers/_wkv_ops.so")
 def _wkv(k, v, w, u, name=None):
   """Compute wkv for GPT mode.
   Args:
-    k: Keys. Expected shape (B, T, embed_dim)
-    v: Values. Expected shape (B, T, embed_dim)
-    w: -exp(time_decay). Expected shape (embed_dim,)
-    u: aka time_first. Expected shape (embed_dim,)
+    k: Keys. Expected shape (B, T, hidden_dim)
+    v: Values. Expected shape (B, T, hidden_dim)
+    w: -exp(time_decay). Expected shape (hidden_dim,)
+    u: aka time_first. Expected shape (hidden_dim,)
   Returns:
-    wkv: Shape (B, T, embed_dim)
+    wkv: Shape (B, T, hidden_dim)
   """
   with tf.name_scope(name or "wkv"):
     op_call = _wkv_so.ops.wkv # Naming is derived from REGISTER_OP("WKV")
@@ -25,10 +25,10 @@ def _wkv_grad(op, grad_output):
     op: The wkv op, containing its inputs
     grad_output: The upstream grads for wkv
   Returns:
-    gk: Shape (B, T, embed_dim)
-    gv: Shape (B, T, embed_dim)
-    gw: Shape (B, embed_dim)
-    gu: Shape (B, embed_dim)
+    gk: Shape (B, T, hidden_dim)
+    gv: Shape (B, T, hidden_dim)
+    gw: Shape (B, hidden_dim)
+    gu: Shape (B, hidden_dim)
   """
   k = tf.convert_to_tensor(op.inputs[0], name="k")
   v = tf.convert_to_tensor(op.inputs[1], name="v")

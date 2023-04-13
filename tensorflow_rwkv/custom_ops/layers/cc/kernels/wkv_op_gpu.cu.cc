@@ -127,10 +127,8 @@ __global__ void wkv_backward(const int B, const int T, const int C,
         o = no;
     }
 
-    // Multiply by w because the w -> -exp(w) preprocessing is halfway in the backwards pass, even though it's not in the forward pass
-    // TODO(prouast): Verify that this is correct
     const int _offsetBC = _b * C + _c;
-    _gw[_offsetBC] += gw * _w[_c];
+    _gw[_offsetBC] += gw;
     _gu[_offsetBC] += gu;
 }
 
