@@ -14,5 +14,4 @@
 # ==============================================================================
 """Additional layers that conform to Keras API."""
 
-from tensorflow_rwkv.layers.optical_flow import CorrelationCost
 from tensorflow_rwkv.layers.rwkv import RWKV, RWKVRNNCell

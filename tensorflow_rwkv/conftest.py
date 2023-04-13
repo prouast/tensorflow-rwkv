@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-import tensorflow_rwkv as tfa
+import tensorflow_rwkv as tfrwkv
 
 from tensorflow_rwkv.utils.test_utils import (  # noqa: F401
     maybe_run_functions_eagerly,
@@ -29,4 +29,4 @@ from tensorflow_rwkv.utils.test_utils import (  # noqa: F401
 def add_doctest_namespace(doctest_namespace):
     doctest_namespace["np"] = np
     doctest_namespace["tf"] = tf
-    doctest_namespace["tfa"] = tfa
+    doctest_namespace["tfrwkv"] = tfrwkv

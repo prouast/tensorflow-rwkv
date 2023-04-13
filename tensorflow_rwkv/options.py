@@ -29,13 +29,13 @@ by setting the enviornment variable `TF_ADDONS_PY_OPS=1`:
 ```bash
 TF_ADDONS_PY_OPS=1 python my_script.py
 ```
-or run `tfa.options.disable_custom_kernel()` in your code, after your imports:
+or run `tfrwkv.options.disable_custom_kernel()` in your code, after your imports:
 ```python
-import tensorflow_rwkv as tfa
+import tensorflow_rwkv as tfrwkv
 import ...
 import ...
 
-tfa.options.disable_custom_kernel()
+tfrwkv.options.disable_custom_kernel()
 ```
 """
 

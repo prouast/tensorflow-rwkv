@@ -1,6 +1,4 @@
 import pytest
-import numpy as np
-import os
 import tensorflow as tf
 from tensorflow_rwkv.layers.rwkv import RWKV, RWKVRNNCell, _wkv
 
@@ -47,6 +45,7 @@ def _forward_rnn_mode(inputs, hidden_dim, ckpt_path):
   if load_status: load_status.assert_consumed()
   return model(inputs_op)
 
+@pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
 def test_forward():
   """Assert that forward outputs of RWKV RNN mode and GPT mode are near enough"""
@@ -64,6 +63,7 @@ def test_forward():
   outputs_rnn_mode = _forward_rnn_mode(inputs, hidden_dim=hidden_dim, ckpt_path=ckpt_path)
   tf.debugging.assert_near(outputs_gpt_mode, outputs_rnn_mode)
 
+@pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
 def test_gradients():
   """Gradient check for WKV op"""
@@ -80,6 +80,7 @@ def test_gradients():
   tf.debugging.assert_near(theoretical[2], numerical[2], rtol=1e-4, atol=1e-4)
   tf.debugging.assert_near(theoretical[3], numerical[3], rtol=1e-4, atol=1e-4)
 
+@pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
 def test_keras_gpt_mode():
   B = 2
@@ -97,6 +98,7 @@ def test_keras_gpt_mode():
   assert tf.keras.backend.dtype(output_layer) == expected_output_type
   assert actual_output.shape[1:] == expected_output_shape[1:]
 
+@pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
 def test_keras_rnn_mode():
   B = 2

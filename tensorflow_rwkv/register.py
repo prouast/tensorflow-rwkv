@@ -17,13 +17,13 @@ def register_all(keras_objects: bool = True, custom_kernels: bool = True) -> Non
     ```python
     tf.keras.models.load_model(
         "my_model.tf",
-        custom_objects={"LAMB": tfa.image.optimizer.LAMB}
+        custom_objects={"LAMB": tfrwkv.image.optimizer.LAMB}
     )
     ```
 
     or you can do:
     ```python
-    tfa.register_all()
+    tfrwkv.register_all()
     tf.keras.models.load_model("my_model.tf")
     ```
 
@@ -41,7 +41,7 @@ def register_all(keras_objects: bool = True, custom_kernels: bool = True) -> Non
     this function:
 
     ```python
-    tfa.register_all()
+    tfrwkv.register_all()
     tf.saved_model.load("my_model.tf")
     ```
 
@@ -83,7 +83,7 @@ def register_custom_kernels() -> None:
         raise FileNotFoundError(
             "No shared objects files were found in the custom ops "
             "directory in Tensorflow Addons, check your installation again, "
-            "or, if you don't need custom ops, call `tfa.register_all(custom_kernels=False)`"
+            "or, if you don't need custom ops, call `tfrwkv.register_all(custom_kernels=False)`"
             " instead."
         )
     try:
@@ -97,7 +97,7 @@ def register_custom_kernels() -> None:
             "wanted to register the shared objects because you needed them when loading your "
             "model, you should fix your install of TensorFlow Addons. If you don't "
             "use custom ops in your model, you can skip registering custom ops with "
-            "`tfa.register_all(custom_kernels=False)`".format(shared_object)
+            "`tfrwkv.register_all(custom_kernels=False)`".format(shared_object)
         ) from e
 
 
