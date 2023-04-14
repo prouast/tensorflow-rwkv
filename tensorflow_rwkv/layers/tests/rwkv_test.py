@@ -51,10 +51,13 @@ def _forward_rnn_mode(inputs, hidden_dim, ckpt_path):
 
 @pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
-# TODO(prouast): Test both float32 and float16 for gpu
-#@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
-def test_forward():
+@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
+def test_forward(dtype):
   """Assert that forward outputs of RWKV RNN mode and GPT mode are near enough"""
+  if dtype == tf.float16:
+    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+  else:
+    tf.keras.mixed_precision.set_global_policy('float32')
   B = 2
   T = 4
   embed_dim = 8
@@ -74,49 +77,58 @@ def test_forward():
 
 @pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
-# TODO(prouast): Test both float32 and float16 for gpu
-#@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
-def test_gradients():
+@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
+def test_gradients(dtype):
   """Gradient check for WKV op"""
+  tol = 1e-3 if dtype == tf.float32 else 0.5
   B = 2
-  T = 4
+  T = 8
   C = 32
-  k = tf.random.uniform(shape=(B, T, C), dtype=tf.float32)
-  v = tf.random.uniform(shape=(B, T, C), dtype=tf.float32)
-  w = -tf.exp(tf.random.uniform(shape=(C,), dtype=tf.float32))
-  u = tf.random.uniform(shape=(C,), dtype=tf.float32)
+  k = tf.random.uniform(shape=(B, T, C), dtype=dtype)
+  v = tf.random.uniform(shape=(B, T, C), dtype=dtype)
+  w = -tf.exp(tf.random.uniform(shape=(C,), dtype=dtype))
+  u = tf.random.uniform(shape=(C,), dtype=dtype)
   theoretical, numerical = tf.test.compute_gradient(_wkv, [k, v, w, u])
-  tf.debugging.assert_near(theoretical[0], numerical[0], rtol=1e-4, atol=1e-4)
-  tf.debugging.assert_near(theoretical[1], numerical[1], rtol=1e-4, atol=1e-4)
-  tf.debugging.assert_near(theoretical[2], numerical[2], rtol=1e-4, atol=1e-4)
-  tf.debugging.assert_near(theoretical[3], numerical[3], rtol=1e-4, atol=1e-4)
+  tf.debugging.assert_near(theoretical[0], numerical[0], rtol=tol, atol=tol)
+  tf.debugging.assert_near(theoretical[1], numerical[1], rtol=tol, atol=tol)
+  tf.debugging.assert_near(theoretical[2], numerical[2], rtol=tol, atol=tol)
+  tf.debugging.assert_near(theoretical[3], numerical[3], rtol=tol, atol=tol)
 
 @pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
-def test_keras_gpt_mode():
+@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
+def test_keras_gpt_mode(dtype):
+  if dtype == tf.float16:
+    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+  else:
+    tf.keras.mixed_precision.set_global_policy('float32')
   B = 2
   T = 4
   embed_dim = 8
   hidden_dim = 16
-  inputs = tf.random.uniform(shape=(B, T, embed_dim), dtype=tf.float32)
+  inputs = tf.random.uniform(shape=(B, T, embed_dim), dtype=dtype)
   input_layer = tf.keras.Input(shape=inputs.shape[1:])
   rwkv_layer = RWKV(embed_dim=embed_dim, hidden_dim=hidden_dim, reg_lambda=0.0)
   output_layer = rwkv_layer(input_layer)
   model = tf.keras.Model(inputs=input_layer, outputs=output_layer, name="RWKVModel")
   expected_output_shape = rwkv_layer.compute_output_shape(inputs.shape)
   actual_output = model(inputs)
-  expected_output_type = "float32"
-  assert tf.keras.backend.dtype(output_layer) == expected_output_type
+  assert tf.keras.backend.dtype(output_layer) == dtype
   assert actual_output.shape[1:] == expected_output_shape[1:]
 
 @pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
-def test_keras_rnn_mode():
+@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
+def test_keras_rnn_mode(dtype):
+  if dtype == tf.float16:
+    tf.keras.mixed_precision.set_global_policy('mixed_float16')
+  else:
+    tf.keras.mixed_precision.set_global_policy('float32')
   B = 2
   T = 4
   embed_dim = 8
   hidden_dim = 16
-  inputs = tf.random.uniform(shape=(B, T, embed_dim), dtype=tf.float32)
+  inputs = tf.random.uniform(shape=(B, T, embed_dim), dtype=dtype)
   input_layer = tf.keras.Input(shape=inputs.shape[1:])
   rwkv_layer = tf.keras.layers.RNN(
     cell=RWKVRNNCell(embed_dim=embed_dim, hidden_dim=hidden_dim, reg_lambda=0.0),
@@ -125,6 +137,5 @@ def test_keras_rnn_mode():
   model = tf.keras.Model(inputs=input_layer, outputs=output_layer, name="RWKVModel")
   expected_output_shape = rwkv_layer.compute_output_shape(inputs.shape)
   actual_output = model(inputs)
-  expected_output_type = "float32"
-  assert tf.keras.backend.dtype(output_layer) == expected_output_type
+  assert tf.keras.backend.dtype(output_layer) == dtype
   assert actual_output.shape[1:] == expected_output_shape[1:]

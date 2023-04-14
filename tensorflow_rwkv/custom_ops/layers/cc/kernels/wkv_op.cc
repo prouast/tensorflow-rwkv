@@ -67,7 +67,7 @@ struct WKVFunctor<CPUDevice, Dtype> {
       for (Eigen::Index idx = start; idx < end; ++idx) {
         const int _b = idx / C;
         const int _c = idx % C;
-        Dtype p = 0, q = 0, o = MIN_VALUE;
+        Dtype p(0), q(0), o(MIN_VALUE);
         // p and q are running sums divided by exp(o) (to avoid overflows)
         for (int t = 0; t < T; t++) {
           Dtype no = std::max(o, _u(_c) + _k(_b, t, _c));
@@ -133,17 +133,17 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
         const int _c = idx % C;
 
         Dtype y[T], z[T], zexp[T];
-        Dtype gw = 0, gu = 0; 
-        Dtype p = 0, q = 0;
-        Dtype dpdw = 0, dqdw = 0;
-        Dtype o = MIN_VALUE;
+        Dtype gw(0), gu(0);
+        Dtype p(0), q(0);
+        Dtype dpdw(0), dqdw(0);
+        Dtype o(MIN_VALUE), one(1);
         for (int t = 0; t < T; t++) {
           Dtype no = std::max(o, _k(_b, t, _c) + _u(_c));
           Dtype A = exp(o - no);
           Dtype B = exp(_k(_b, t, _c) + _u(_c) - no);
 
           Dtype num = A * p + B * _v(_b, t, _c);
-          Dtype iden = 1 / (A * q + B);
+          Dtype iden = one / (A * q + B);
 
           y[t] = num * iden;
           z[t] = iden;
@@ -162,20 +162,20 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
           o = no;
         }
         
-        Dtype gp = 0, gq = 0;
-        o = MIN_VALUE;
+        Dtype gp(0), gq(0);
+        Dtype _o(MIN_VALUE);
         for (int t = T - 1; t >= 0; t--) {
           Dtype A = _gwkv(_b, t, _c) * z[t] * exp(zexp[t]);
-          Dtype B = exp(_k(_b, t, _c) + o);
+          Dtype B = exp(_k(_b, t, _c) + _o);
           _gk(_b, t, _c) = A * (_v(_b, t, _c) - y[t]) + B * (gp * _v(_b, t, _c) + gq);
           _gv(_b, t, _c) = A + B * gp;
 
-          Dtype no = std::max(_w(_c) + o, zexp[t] - _k(_b, t, _c) - _u(_c));
-          A = exp(_w(_c) + o - no);
+          Dtype no = std::max(_w(_c) + _o, zexp[t] - _k(_b, t, _c) - _u(_c));
+          A = exp(_w(_c) + _o - no);
           B = _gwkv(_b, t, _c) * z[t] * exp(zexp[t] - _k(_b, t, _c) - _u(_c) - no);
           gp = A * gp + B;
           gq = A * gq - B * y[t];
-          o = no;
+          _o = no;
         }
         
         // Accumulate gradients for batch elements
@@ -268,8 +268,9 @@ class WKVGradOp : public OpKernel {
                               .TypeConstraint<T>("T"),       \
                           WKVGradOp<CPUDevice, T>)
 
-TF_CALL_float(REGISTER_WKV_OP_CPU);
-// TODO(prouast) Add support for float16 with CPU
+REGISTER_WKV_OP_CPU(Eigen::half);
+REGISTER_WKV_OP_CPU(float);
+REGISTER_WKV_OP_CPU(bfloat16);
 #undef REGISTER_WKV_OP_CPU
 
 // Register the GPU kernels.
@@ -285,8 +286,9 @@ TF_CALL_float(REGISTER_WKV_OP_CPU);
                               .TypeConstraint<T>("T"),       \
                           WKVGradOp<GPUDevice, T>)
 
-TF_CALL_float(REGISTER_WKV_OP_GPU);
-TF_CALL_bfloat16(REGISTER_WKV_OP_GPU);
+REGISTER_WKV_OP_GPU(float);
+REGISTER_WKV_OP_GPU(bfloat16);
+REGISTER_WKV_OP_GPU(Eigen::half);
 #undef REGISTER_WKV_OP_GPU
 
 #endif  // GOOGLE_CUDA

@@ -18,7 +18,7 @@ REGISTER_OP("WKV")
     .Input("w: T") // -exp(time_decay) (C,)
     .Input("u: T") // time_first (C,)
     .Output("wkv: T") // (B, T, C)
-    .Attr("T: {half, float}")
+    .Attr("T: {float, bfloat16, half}")
     .SetShapeFn([](InferenceContext* c) {
       // k and v
       ShapeHandle shp_hnd_k, shp_hnd_v, shp_hnd_kv;
@@ -48,7 +48,7 @@ REGISTER_OP("WKVGrad")
     .Output("gv: T") // (B, T, C)
     .Output("gw: T") // (C,)
     .Output("gu: T") // (C,)
-    .Attr("T: {half, float}")
+    .Attr("T: {float, bfloat16, half}")
     .SetShapeFn([](InferenceContext* c) {
       // k and v
       ShapeHandle shp_hnd_k, shp_hnd_v, shp_hnd_kv;
