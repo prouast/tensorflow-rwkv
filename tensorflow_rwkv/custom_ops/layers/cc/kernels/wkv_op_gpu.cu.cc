@@ -133,9 +133,9 @@ __global__ void wkv_backward(const int B, const int T, const int C,
         o = no;
     }
 
-    const int _offsetBC = _b * C + _c;
-    _gw[_offsetBC] += gw;
-    _gu[_offsetBC] += gu;
+    // Accumulate gradients for batch elements
+    _gw[_c] += gw;
+    _gu[_c] += gu;
 }
 
 };  // namespace

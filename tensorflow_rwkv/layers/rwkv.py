@@ -32,8 +32,8 @@ def _wkv_grad(op, grad_output):
   Returns:
     gk: Shape (B, T, hidden_dim)
     gv: Shape (B, T, hidden_dim)
-    gw: Shape (B, hidden_dim)
-    gu: Shape (B, hidden_dim)
+    gw: Shape (hidden_dim,)
+    gu: Shape (hidden_dim,)
   """
   k = tf.convert_to_tensor(op.inputs[0], name="k")
   v = tf.convert_to_tensor(op.inputs[1], name="v")
@@ -46,6 +46,10 @@ def _wkv_grad(op, grad_output):
   gv = tf.convert_to_tensor(grads[1], name="gv")
   gw = tf.convert_to_tensor(grads[2], name="gw")
   gu = tf.convert_to_tensor(grads[3], name="gu")
+  assert k.shape == gk.shape
+  assert v.shape == gv.shape
+  assert w.shape == gw.shape
+  assert u.shape == gu.shape
   return [gk, gv, gw, gu]
 
 @tf.keras.utils.register_keras_serializable(package="RWKV")

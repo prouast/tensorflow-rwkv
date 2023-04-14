@@ -15,10 +15,10 @@ using ::tensorflow::shape_inference::ShapeHandle;
 REGISTER_OP("WKV")
     .Input("k: T") // (B, T, C)
     .Input("v: T") // (B, T, C)
-    .Input("w: T") // time_decay (C,)
+    .Input("w: T") // -exp(time_decay) (C,)
     .Input("u: T") // time_first (C,)
     .Output("wkv: T") // (B, T, C)
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, float}")
     .SetShapeFn([](InferenceContext* c) {
       // k and v
       ShapeHandle shp_hnd_k, shp_hnd_v, shp_hnd_kv;
@@ -41,14 +41,14 @@ REGISTER_OP("WKV")
 REGISTER_OP("WKVGrad")
     .Input("k: T") // (B, T, C)
     .Input("v: T") // (B, T, C)
-    .Input("w: T") // time_decay (C,)
+    .Input("w: T") // -exp(time_decay) (C,)
     .Input("u: T") // time_first (C,)
     .Input("gwkv: T") // (B, T, C)
     .Output("gk: T") // (B, T, C)
     .Output("gv: T") // (B, T, C)
-    .Output("gw: T") // (B, C)
-    .Output("gu: T") // (B, C)
-    .Attr("T: realnumbertype")
+    .Output("gw: T") // (C,)
+    .Output("gu: T") // (C,)
+    .Attr("T: {half, float}")
     .SetShapeFn([](InferenceContext* c) {
       // k and v
       ShapeHandle shp_hnd_k, shp_hnd_v, shp_hnd_kv;
@@ -67,8 +67,8 @@ REGISTER_OP("WKVGrad")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &shp_hnd_u));
       TF_RETURN_IF_ERROR(c->Merge(shp_hnd_w, shp_hnd_u, &shp_hnd_wu));
       C = c->Value(c->Dim(shp_hnd_wu, 0));
-      c->set_output(2, c->MakeShape({B, C}));
-      c->set_output(3, c->MakeShape({B, C}));
+      c->set_output(2, c->MakeShape({C}));
+      c->set_output(3, c->MakeShape({C}));
       return Status();
     })
     .Doc(R"Doc(WKVGrad op.)Doc");

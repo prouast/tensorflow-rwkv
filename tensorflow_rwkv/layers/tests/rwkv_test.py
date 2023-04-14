@@ -51,6 +51,8 @@ def _forward_rnn_mode(inputs, hidden_dim, ckpt_path):
 
 @pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
+# TODO(prouast): Test both float32 and float16 for gpu
+#@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
 def test_forward():
   """Assert that forward outputs of RWKV RNN mode and GPT mode are near enough"""
   B = 2
@@ -72,9 +74,11 @@ def test_forward():
 
 @pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])
+# TODO(prouast): Test both float32 and float16 for gpu
+#@pytest.mark.parametrize("dtype", [tf.float32, tf.float16])
 def test_gradients():
   """Gradient check for WKV op"""
-  B = 1
+  B = 2
   T = 4
   C = 32
   k = tf.random.uniform(shape=(B, T, C), dtype=tf.float32)
@@ -115,7 +119,7 @@ def test_keras_rnn_mode():
   inputs = tf.random.uniform(shape=(B, T, embed_dim), dtype=tf.float32)
   input_layer = tf.keras.Input(shape=inputs.shape[1:])
   rwkv_layer = tf.keras.layers.RNN(
-    cell=RWKVRNNCell(embed_dim=inputs.shape[2], hidden_dim=16, reg_lambda=0.0),
+    cell=RWKVRNNCell(embed_dim=embed_dim, hidden_dim=hidden_dim, reg_lambda=0.0),
     return_sequences=True, return_state=False)
   output_layer = rwkv_layer(input_layer)
   model = tf.keras.Model(inputs=input_layer, outputs=output_layer, name="RWKVModel")

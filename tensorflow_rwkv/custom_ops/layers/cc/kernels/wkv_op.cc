@@ -111,9 +111,9 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
     _gk.setZero();
     auto _gv = gv->tensor<Dtype, 3>();
     _gv.setZero();
-    auto _gw = gw->tensor<Dtype, 2>();
+    auto _gw = gw->tensor<Dtype, 1>();
     _gw.setZero();
-    auto _gu = gu->tensor<Dtype, 2>();
+    auto _gu = gu->tensor<Dtype, 1>();
     _gu.setZero();
 
     // Estimate cost per channel
@@ -178,8 +178,9 @@ struct WKVGradFunctor<CPUDevice, Dtype> {
           o = no;
         }
         
-        _gw(_b, _c) += gw;
-        _gu(_b, _c) += gu;
+        // Accumulate gradients for batch elements
+        _gw(_c) += gw;
+        _gu(_c) += gu;
       }
     };
     auto thread_pool = context->device()->tensorflow_cpu_worker_threads()->workers;
@@ -230,7 +231,7 @@ class WKVGradOp : public OpKernel {
     const TensorShape &k_shape = k.shape();
     const TensorShape &v_shape = v.shape();
     const TensorShape &w_shape = w.shape();
-    const TensorShape &u_shape = w.shape();
+    const TensorShape &u_shape = u.shape();
     const TensorShape &gwkv_shape = gwkv.shape();
     OP_REQUIRES(context, k_shape == v_shape,
                 errors::InvalidArgument("Input shapes of k, v, and gwkv have to be the same"));
@@ -245,9 +246,9 @@ class WKVGradOp : public OpKernel {
     Tensor* gv;
     OP_REQUIRES_OK(context, context->allocate_output(1, v_shape, &gv));
     Tensor* gw;
-    OP_REQUIRES_OK(context, context->allocate_output(2, TensorShape({k_shape.dim_size(0), w_shape.dim_size(0)}), &gw));
+    OP_REQUIRES_OK(context, context->allocate_output(2, w_shape, &gw));
     Tensor* gu;
-    OP_REQUIRES_OK(context, context->allocate_output(3, TensorShape({k_shape.dim_size(0), u_shape.dim_size(0)}), &gu));
+    OP_REQUIRES_OK(context, context->allocate_output(3, u_shape, &gu));
 
     functor::WKVGradFunctor<Device, Dtype> wkvGrad;
     Status s = wkvGrad(context, k, v, w, u, gwkv, gk, gv, gw, gu);
@@ -268,6 +269,7 @@ class WKVGradOp : public OpKernel {
                           WKVGradOp<CPUDevice, T>)
 
 TF_CALL_float(REGISTER_WKV_OP_CPU);
+// TODO(prouast) Add support for float16 with CPU
 #undef REGISTER_WKV_OP_CPU
 
 // Register the GPU kernels.
@@ -284,6 +286,7 @@ TF_CALL_float(REGISTER_WKV_OP_CPU);
                           WKVGradOp<GPUDevice, T>)
 
 TF_CALL_float(REGISTER_WKV_OP_GPU);
+TF_CALL_bfloat16(REGISTER_WKV_OP_GPU);
 #undef REGISTER_WKV_OP_GPU
 
 #endif  // GOOGLE_CUDA
