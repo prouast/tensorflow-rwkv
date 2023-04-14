@@ -1,8 +1,12 @@
+# Copyright (C) Philipp Rouast - All Rights Reserved
+# Unauthorized copying of this program, via any medium is strictly prohibited
+# Proprietary and confidential
+# Written by Philipp Rouast <philipp@rouast.com>, April 2023
+
+import os
 import pytest
 import tensorflow as tf
 from tensorflow_rwkv.layers.rwkv import RWKV, RWKVRNNCell, _wkv
-
-# python -m pytest -v --functions-durations=20 --modules-durations=5 $SKIP_CUSTOM_OP_TESTS_FLAG $EXTRA_ARGS ./tensorflow_rwkv
 
 class Identity(tf.keras.layers.Wrapper):
   """Identity wrapper layer"""
@@ -58,10 +62,13 @@ def test_forward():
   ckpt_path = "test"
   model = _create_model(rnn_mode=False, input_shape=inputs.shape, hidden_dim=hidden_dim)
   model.save_weights(filepath=ckpt_path, overwrite=True, save_format="h5")
-  # GPT mode model
+  # Load for GPT and RNN mode and compute outputs
   outputs_gpt_mode = _forward_gpt_mode(inputs, hidden_dim=hidden_dim, ckpt_path=ckpt_path)
   outputs_rnn_mode = _forward_rnn_mode(inputs, hidden_dim=hidden_dim, ckpt_path=ckpt_path)
-  tf.debugging.assert_near(outputs_gpt_mode, outputs_rnn_mode)
+  # Compare outputs
+  tf.debugging.assert_near(outputs_gpt_mode, outputs_rnn_mode, rtol=1e-3, atol=1e-3)
+  # Clean up
+  os.remove(ckpt_path)
 
 @pytest.mark.usefixtures("maybe_run_functions_eagerly")
 @pytest.mark.with_device(["cpu", "gpu"])

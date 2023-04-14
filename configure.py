@@ -124,7 +124,7 @@ def get_shared_lib_name():
 
 def create_build_configuration():
     print()
-    print("Configuring TensorFlow Addons to be built from source...")
+    print("Configuring TensorFlow RWKV to be built from source...")
 
     if os.path.isfile(_TFRWKV_BAZELRC):
         os.remove(_TFRWKV_BAZELRC)

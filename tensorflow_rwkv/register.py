@@ -7,9 +7,9 @@ from tensorflow_rwkv.utils.resource_loader import get_path_to_datafile
 
 
 def register_all(keras_objects: bool = True, custom_kernels: bool = True) -> None:
-    """Register TensorFlow Addons' objects in TensorFlow global dictionaries.
+    """Register TensorFlow RWKV objects in TensorFlow global dictionaries.
 
-    When loading a Keras model that has a TF Addons' function, it is needed
+    When loading a Keras model that has a TF RWKV function, it is needed
     for this function to be known by the Keras deserialization process.
 
     There are two ways to do this, either do
@@ -27,7 +27,7 @@ def register_all(keras_objects: bool = True, custom_kernels: bool = True) -> Non
     tf.keras.models.load_model("my_model.tf")
     ```
 
-    If the model contains custom ops (compiled ops) of TensorFlow Addons,
+    If the model contains custom ops (compiled ops) of TensorFlow RWKV,
     and the graph is loaded with `tf.saved_model.load`, then custom ops need
     to be registered before to avoid an error of the type:
 
@@ -51,15 +51,15 @@ def register_all(keras_objects: bool = True, custom_kernels: bool = True) -> Non
     Args:
         keras_objects: boolean, `True` by default. If `True`, register all
             Keras objects
-            with `tf.keras.utils.register_keras_serializable(package="Addons")`
+            with `tf.keras.utils.register_keras_serializable(package="RWKV")`
             If set to False, doesn't register any Keras objects
-            of Addons in TensorFlow.
+            of RWKV in TensorFlow.
         custom_kernels: boolean, `True` by default. If `True`, loads all
-            custom kernels of TensorFlow Addons with
+            custom kernels of TensorFlow RWKV with
             `tf.load_op_library("path/to/so/file.so")`. Loading the SO files
             register them automatically. If `False` doesn't load and register
             the shared objects files. Not that it might be useful to turn it off
-            if your installation of Addons doesn't work well with custom ops.
+            if your installation of RWKV doesn't work well with custom ops.
     Returns:
         None
     """
@@ -82,7 +82,7 @@ def register_custom_kernels() -> None:
     if not all_shared_objects:
         raise FileNotFoundError(
             "No shared objects files were found in the custom ops "
-            "directory in Tensorflow Addons, check your installation again, "
+            "directory in Tensorflow RWKV, check your installation again, "
             "or, if you don't need custom ops, call `tfrwkv.register_all(custom_kernels=False)`"
             " instead."
         )
@@ -93,9 +93,9 @@ def register_custom_kernels() -> None:
         raise RuntimeError(
             "One of the shared objects ({}) could not be loaded. This may be "
             "due to a number of reasons (incompatible TensorFlow version, buiding from "
-            "source with different flags, broken install of TensorFlow Addons...). If you "
+            "source with different flags, broken install of TensorFlow RWKV...). If you "
             "wanted to register the shared objects because you needed them when loading your "
-            "model, you should fix your install of TensorFlow Addons. If you don't "
+            "model, you should fix your install of TensorFlow RWKV. If you don't "
             "use custom ops in your model, you can skip registering custom ops with "
             "`tfrwkv.register_all(custom_kernels=False)`".format(shared_object)
         ) from e

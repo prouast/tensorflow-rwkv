@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for testing Addons."""
+"""Utilities for testing RWKV."""
 
 import os
 import random

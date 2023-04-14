@@ -1,3 +1,8 @@
+# Copyright (C) Philipp Rouast - All Rights Reserved
+# Unauthorized copying of this program, via any medium is strictly prohibited
+# Proprietary and confidential
+# Written by Philipp Rouast <philipp@rouast.com>, April 2023
+
 import tensorflow as tf
 from typeguard import typechecked
 from tensorflow_rwkv.utils.resource_loader import LazySO
@@ -368,3 +373,4 @@ class RWKVRNNCell(tf.keras.layers.Layer):
     x_cm, new_state_cm = self.channel_mixing(self.ln_2(x), prev_state=prev_state)
     x = x + x_cm # (B, embed_dim)
     return x, new_state_cm + new_state_tm
+  

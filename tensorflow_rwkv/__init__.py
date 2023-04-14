@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Useful extra functionality for TensorFlow maintained by SIG-addons."""
+"""Useful extra functionality for TensorFlow."""
 from tensorflow_rwkv.utils.ensure_tf_install import _check_tf_version
 
 _check_tf_version()

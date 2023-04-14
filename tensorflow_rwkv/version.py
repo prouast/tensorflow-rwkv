@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Define TensorFlow Addons version information."""
+"""Define TensorFlow RWKV version information."""
 
 # Required TensorFlow version [min, max)
 INCLUSIVE_MIN_TF_VERSION = "2.10.0"
@@ -20,7 +20,7 @@ EXCLUSIVE_MAX_TF_VERSION = "2.13.0"
 
 # We follow Semantic Versioning (https://semver.org/)
 _MAJOR_VERSION = "0"
-_MINOR_VERSION = "20"
+_MINOR_VERSION = "1"
 _PATCH_VERSION = "0"
 
 # When building releases, we can update this value on the release branch to

@@ -78,7 +78,7 @@ class LazySO:
         warnings.warn(
             "You are currently using TensorFlow {} and trying to load a custom op ({})."
             "\n"
-            "TensorFlow Addons has compiled its custom ops against TensorFlow {}, "
+            "TensorFlow RWKV has compiled its custom ops against TensorFlow {}, "
             "and there are no compatibility guarantees between the two versions. "
             "\n"
             "This means that you might get segfaults when loading the custom op, "
@@ -86,9 +86,7 @@ class LazySO:
             "on Github. This is a known limitation."
             "\n\n"
             "It might help you to fallback to pure Python "
-            "ops by setting environment variable `TF_ADDONS_PY_OPS=1` or using `tfrwkv.options.disable_custom_kernel()` in your code. "
-            "To do that, see "
-            "https://github.com/tensorflow/addons#gpucpu-custom-ops "
+            "ops by setting environment variable `TF_RWKV_PY_OPS=1` or using `tfrwkv.options.disable_custom_kernel()` in your code. "
             "\n\n"
             "You can also change the TensorFlow version installed on your system. "
             "You would need a TensorFlow version equal to or above {} and strictly "
@@ -96,10 +94,9 @@ class LazySO:
             "as well as non-pip TensorFlow like `conda install tensorflow` or compiled "
             "from source are not supported."
             "\n\n"
-            "The last solution is to find the TensorFlow Addons version that has "
+            "The last solution is to find the TensorFlow RWKV version that has "
             "custom ops compatible with the TensorFlow installed on your "
-            "system. To do that, refer to the readme: "
-            "https://github.com/tensorflow/addons"
+            "system."
             "".format(
                 tf.__version__,
                 self.relative_path,

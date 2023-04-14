@@ -33,10 +33,13 @@ python3 ./configure.py
 bazel build build_pip_pkg
 bazel-bin/build_pip_pkg artifacts
 
+pytest ./tensorflow_rwkv
+
 pip install artifacts/tensorflow_rwkv-*.whl
 ```
 
 ##### GPU and CPU Custom Ops
+
 ```
 git clone https://github.com/prouast/tensorflow-rwkv.git
 cd tensorflow-rwkv
@@ -47,7 +50,7 @@ export TF_NEED_CUDA="1"
 export TF_CUDA_VERSION="11"
 export TF_CUDNN_VERSION="8"
 export CUDA_TOOLKIT_PATH="/usr/local/cuda"
-export CUDNN_INSTALL_PATH="/usr/lib/x86_64-linux-gnu"
+export CUDNN_INSTALL_PATH="/home/philipp/Developer/miniconda3/envs/mldev"
 
 # This script links project with TensorFlow dependency
 python3 ./configure.py
@@ -55,5 +58,14 @@ python3 ./configure.py
 bazel build build_pip_pkg
 bazel-bin/build_pip_pkg artifacts
 
+pytest ./tensorflow_rwkv
+
 pip install artifacts/tensorflow_rwkv-*.whl
+```
+
+Note: [Ugly fix](https://github.com/tensorflow/addons/issues/2712#issuecomment-1165598931) may be required if encountering error that `/dt9/usr/bin` cannot be found:
+
+```
+sudo mkdir -p /dt9/usr
+sudo ln -s /usr/bin /dt9/usr/bin
 ```

@@ -1,3 +1,8 @@
+// Copyright (C) Philipp Rouast - All Rights Reserved
+// Unauthorized copying of this program, via any medium is strictly prohibited
+// Proprietary and confidential
+// Written by Philipp Rouast <philipp@rouast.com>, April 2023
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
