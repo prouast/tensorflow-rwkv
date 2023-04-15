@@ -142,6 +142,15 @@ class RWKV(tf.keras.layers.Layer):
         regularizer=tf.keras.regularizers.L2(self.reg_lambda),
         name='cm_receptance_weights')
     self.built = True
+  def get_config(self):
+    config = {
+      "embed_dim": self.embed_dim,
+      "hidden_dim": self.hidden_dim,
+      "reg_lambda": self.reg_lambda
+    }
+    base_config = super().get_config()
+    config.update(base_config)
+    return config
   def time_mixing(self, inputs):
     """Apply time mixing to inputs in GPT mode.
     Args:
@@ -195,6 +204,8 @@ class RWKV(tf.keras.layers.Layer):
     x = x + self.time_mixing(self.ln_1(x)) # (B, T, n_embed)
     x = x + self.channel_mixing(self.ln_2(x)) # (B, T, n_embed)
     return x
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
 class RWKVRNNCell(tf.keras.layers.Layer):
   @typechecked
@@ -285,6 +296,15 @@ class RWKVRNNCell(tf.keras.layers.Layer):
       regularizer=tf.keras.regularizers.L2(self.reg_lambda),
       name='cm_receptance_weights')
     self.built = True
+  def get_config(self):
+    config = {
+      "embed_dim": self.embed_dim,
+      "hidden_dim": self.hidden_dim,
+      "reg_lambda": self.reg_lambda
+    }
+    base_config = super().get_config()
+    config.update(base_config)
+    return config
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     if inputs is not None:
       batch_size = tf.shape(inputs)[0]
@@ -377,4 +397,6 @@ class RWKVRNNCell(tf.keras.layers.Layer):
     x_cm, new_state_cm = self.channel_mixing(self.ln_2(x), prev_state=prev_state)
     x = x + x_cm # (B, embed_dim)
     return x, new_state_cm + new_state_tm
+  def compute_output_shape(self, input_shape):
+    return input_shape
   

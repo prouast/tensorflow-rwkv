@@ -192,9 +192,6 @@ struct WKVGradFunctor<GPUDevice, Dtype> {
   }
 };
 
-template struct WKVFunctor<GPUDevice, float>;
-template struct WKVGradFunctor<GPUDevice, float>;
-
 }  // namespace functor
 }  // namespace rwkv
 }  // namespace tensorflow
