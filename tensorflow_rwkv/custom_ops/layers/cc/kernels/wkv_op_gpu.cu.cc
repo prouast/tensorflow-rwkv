@@ -1,8 +1,3 @@
-// Copyright (C) Philipp Rouast - All Rights Reserved
-// Unauthorized copying of this program, via any medium is strictly prohibited
-// Proprietary and confidential
-// Written by Philipp Rouast <philipp@rouast.com>, April 2023
-
 // Adapted from BlinkDL RWKV-v4
 // https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v4/cuda/wkv_cuda.cu
 // https://johanwind.github.io/2023/03/23/rwkv_details.html
