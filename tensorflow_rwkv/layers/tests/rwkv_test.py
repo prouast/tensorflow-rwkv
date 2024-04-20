@@ -1,8 +1,3 @@
-# Copyright (C) Philipp Rouast - All Rights Reserved
-# Unauthorized copying of this program, via any medium is strictly prohibited
-# Proprietary and confidential
-# Written by Philipp Rouast <philipp@rouast.com>, April 2023
-
 import os
 import pytest
 import tensorflow as tf
