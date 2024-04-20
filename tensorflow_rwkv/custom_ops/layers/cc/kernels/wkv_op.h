@@ -1,8 +1,3 @@
-// Copyright (C) Philipp Rouast - All Rights Reserved
-// Unauthorized copying of this program, via any medium is strictly prohibited
-// Proprietary and confidential
-// Written by Philipp Rouast <philipp@rouast.com>, April 2023
-
 #ifndef tensorflow_rwkv_LAYERS_KERNELS_WKV_OP_H_
 #define tensorflow_rwkv_LAYERS_KERNELS_WKV_OP_H_
 
