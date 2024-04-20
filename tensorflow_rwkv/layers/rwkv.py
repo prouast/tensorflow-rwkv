@@ -1,8 +1,3 @@
-# Copyright (C) Philipp Rouast - All Rights Reserved
-# Unauthorized copying of this program, via any medium is strictly prohibited
-# Proprietary and confidential
-# Written by Philipp Rouast <philipp@rouast.com>, April 2023
-
 import tensorflow as tf
 from typeguard import typechecked
 from tensorflow_rwkv.utils.resource_loader import LazySO
